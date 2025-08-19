@@ -1,0 +1,401 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  username  String    @unique
+  password  String
+  displayName String?  // اسم العرض (اختياري)
+  bio       String?   // نبذة شخصية
+  avatar    String?   // صورة المستخدم
+  karma     Int       @default(0)  // إجمالي نقاط الكارما
+  isAdmin   Boolean   @default(false)
+  isBanned  Boolean   @default(false)
+  banReason String?
+  banExpiresAt DateTime? // تاريخ انتهاء الحظر
+  isVerified Boolean  @default(false) // حساب موثق
+  lastActiveAt DateTime @default(now()) // آخر نشاط
+  posts     Post[]
+  comments  Comment[]
+  votes     Vote[]
+  karmaHistory KarmaHistory[] // سجل تغيرات الكارما
+  notifications Notification[]
+  sentMessages     PrivateMessage[] @relation("SentMessages")
+  receivedMessages  PrivateMessage[] @relation("ReceivedMessages")
+  moderatedSubreddits SubredditModerator[]
+  followers         Follow[]    @relation("Followers")
+  following         Follow[]    @relation("Following")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  subscribedSubreddits SubredditSubscription[]
+  bannedInSubreddits SubredditBan[] @relation("BannedUser")
+  bannedUsers        SubredditBan[] @relation("BannedByUser")
+  savedPosts        SavedPost[]
+  reportsMade       Report[]    @relation("ReportedBy")
+  reportsReceived   Report[]    @relation("ReportedUser")
+  reviewedReports   Report[]    @relation("ReviewedBy")
+  givenAwards       GivenAward[] @relation("GivenAwards")
+  receivedAwards    GivenAward[] @relation("ReceivedAwards")
+  pollVotes         PollVote[]
+  createdSubreddits Subreddit[] @relation("SubredditCreator")
+
+  @@index([username])
+  @@index([email])
+  @@index([lastActiveAt])
+}
+
+model Subreddit {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  displayName String?   // اسم العرض للمنتدى
+  description String?
+  rules       String?   // قواعد المنتدى
+  bannerImage String?   // صورة البانر
+  iconImage   String?   // أيقونة المنتدى
+  theme       Json?     // إعدادات التخصيص (الألوان، الخطوط، إلخ)
+  isPrivate   Boolean   @default(false) // منتدى خاص
+  isNSFW      Boolean   @default(false) // محتوى للبالغين
+  memberCount Int       @default(0)     // عدد الأعضاء
+  postCount   Int       @default(0)     // عدد المنشورات
+  createdById Int
+  createdBy   User      @relation("SubredditCreator", fields: [createdById], references: [id])
+  posts       Post[]
+  moderators  SubredditModerator[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  subscribers SubredditSubscription[]
+  bans        SubredditBan[]
+  reports     Report[]
+
+  @@index([name])
+  @@index([isPrivate])
+  @@index([memberCount])
+}
+
+model SubredditModerator {
+  id          Int       @id @default(autoincrement())
+  subredditId Int
+  subreddit   Subreddit @relation(fields: [subredditId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        String    // admin, moderator
+  permissions Json      // صلاحيات المشرف
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([subredditId, userId])
+}
+
+model Post {
+  id          Int       @id @default(autoincrement())
+  title       String
+  content     String?   // المحتوى اختياري للمنشورات التي تحتوي على روابط فقط
+  type        PostType  @default(TEXT) // نوع المنشور
+  url         String?   // رابط خارجي
+  authorId    Int
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  subredditId Int
+  subreddit   Subreddit @relation(fields: [subredditId], references: [id], onDelete: Cascade)
+  comments    Comment[]
+  votes       Vote[]
+  media       Media[]   // روابط الصور والفيديوهات
+  isDeleted   Boolean   @default(false)
+  deleteReason String?
+  isLocked    Boolean   @default(false) // منع التعليقات الجديدة
+  isPinned    Boolean   @default(false) // تثبيت المنشور
+  isNSFW      Boolean   @default(false) // محتوى للبالغين
+  flair       String?   // تصنيف المنشور
+  upvotes     Int       @default(0)     // عدد التصويتات الإيجابية
+  downvotes   Int       @default(0)     // عدد التصويتات السلبية
+  commentCount Int      @default(0)     // عدد التعليقات
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  savedBy     SavedPost[]
+  reports     Report[]
+  awards      GivenAward[]
+  poll        Poll?
+
+  @@index([authorId])
+  @@index([subredditId])
+  @@index([createdAt])
+  @@index([upvotes])
+  @@index([isPinned])
+}
+
+model Media {
+  id        Int      @id @default(autoincrement())
+  type      String   // image, video, link
+  url       String
+  publicId  String?  // معرف الوسائط في Cloudinary
+  width     Int?     // عرض الوسائط
+  height    Int?     // ارتفاع الوسائط
+  postId    Int
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Comment {
+  id        Int       @id @default(autoincrement())
+  content   String
+  authorId  Int
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  postId    Int
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parentId  Int?      // للتعليقات المتداخلة
+  parent    Comment?  @relation("CommentToComment", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentToComment")
+  votes     Vote[]
+  isDeleted Boolean   @default(false)
+  deleteReason String?
+  upvotes   Int       @default(0)     // عدد التصويتات الإيجابية
+  downvotes Int       @default(0)     // عدد التصويتات السلبية
+  depth     Int       @default(0)     // عمق التعليق في التسلسل
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  reports   Report[]
+  awards    GivenAward[]
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([parentId])
+  @@index([createdAt])
+}
+
+model Vote {
+  id        Int      @id @default(autoincrement())
+  value     Int      // 1 للتصويت الإيجابي، -1 للتصويت السلبي
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    Int?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId Int?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
+}
+
+model KarmaHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Int      // كمية التغيير في الكارما
+  reason    String   // سبب التغيير (مثل: تصويت إيجابي، تصويت سلبي، منشور رائع، إلخ)
+  sourceId  Int?     // معرف المصدر (منشور، تعليق، إلخ)
+  sourceType String? // نوع المصدر (post, comment)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // comment, reply, message, mention
+  content   String
+  isRead    Boolean  @default(false)
+  sourceId  Int?     // معرف المصدر (منشور، تعليق، رسالة)
+  sourceType String? // نوع المصدر
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PrivateMessage {
+  id        Int      @id @default(autoincrement())
+  senderId  Int
+  sender    User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId Int
+  receiver  User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  content   String
+  isRead    Boolean  @default(false)
+  replyToId Int?
+  replyTo   PrivateMessage? @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies   PrivateMessage[] @relation("MessageReplies")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([replyToId])
+}
+
+model Follow {
+  id          Int      @id @default(autoincrement())
+  followerId  Int      // المستخدم الذي يتابع
+  followingId Int      // المستخدم المُتابَع
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model SubredditSubscription {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  subredditId Int
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+  subreddit   Subreddit @relation(fields: [subredditId], references: [id])
+
+  @@unique([userId, subredditId])
+}
+
+model SubredditBan {
+  id          Int      @id @default(autoincrement())
+  subredditId Int
+  userId      Int
+  bannedBy    Int
+  reason      String
+  createdAt   DateTime @default(now())
+  subreddit   Subreddit @relation(fields: [subredditId], references: [id], onDelete: Cascade)
+  user        User     @relation("BannedUser", fields: [userId], references: [id], onDelete: Cascade)
+  bannedByUser User    @relation("BannedByUser", fields: [bannedBy], references: [id], onDelete: Cascade)
+
+  @@unique([subredditId, userId])
+}
+
+enum PostType {
+  TEXT
+  LINK
+  IMAGE
+  VIDEO
+  POLL
+}
+
+model SavedPost {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  postId    Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([userId])
+}
+
+model Report {
+  id          Int       @id @default(autoincrement())
+  type        ReportType
+  reason      String
+  description String?
+  status      ReportStatus @default(PENDING)
+  reportedById Int
+  reportedBy  User      @relation("ReportedBy", fields: [reportedById], references: [id], onDelete: Cascade)
+  reportedUserId Int?
+  reportedUser User?    @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  postId      Int?
+  post        Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId   Int?
+  comment     Comment?  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  subredditId Int?
+  subreddit   Subreddit? @relation(fields: [subredditId], references: [id], onDelete: Cascade)
+  reviewedById Int?
+  reviewedBy  User?     @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([reportedById])
+  @@index([createdAt])
+}
+
+enum ReportType {
+  POST
+  COMMENT
+  USER
+  SUBREDDIT
+}
+
+enum ReportStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RESOLVED
+}
+
+model Award {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  icon        String   // رابط الأيقونة
+  cost        Int      // تكلفة الجائزة بالعملة الافتراضية
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  givenAwards GivenAward[]
+}
+
+model GivenAward {
+  id        Int      @id @default(autoincrement())
+  awardId   Int
+  award     Award    @relation(fields: [awardId], references: [id], onDelete: Cascade)
+  giverId   Int
+  giver     User     @relation("GivenAwards", fields: [giverId], references: [id], onDelete: Cascade)
+  receiverId Int
+  receiver  User     @relation("ReceivedAwards", fields: [receiverId], references: [id], onDelete: Cascade)
+  postId    Int?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId Int?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  message   String?  // رسالة مع الجائزة
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+  @@index([commentId])
+  @@index([giverId])
+  @@index([receiverId])
+}
+
+model Poll {
+  id        Int         @id @default(autoincrement())
+  postId    Int         @unique
+  post      Post        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  question  String
+  options   PollOption[]
+  expiresAt DateTime?
+  createdAt DateTime    @default(now())
+}
+
+model PollOption {
+  id        Int        @id @default(autoincrement())
+  pollId    Int
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  text      String
+  voteCount Int        @default(0)
+  votes     PollVote[]
+  createdAt DateTime   @default(now())
+}
+
+model PollVote {
+  id       Int        @id @default(autoincrement())
+  userId   Int
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optionId Int
+  option   PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, optionId])
+  @@index([userId])
+}
