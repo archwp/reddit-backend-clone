@@ -3758,7 +3758,9 @@ app.get("/subreddits/:id/subscribers", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "حدث خطأ أثناء جلب قائمة المشتركين" });
   }
 });
-
+app.get("/healthz", (req, res) => {
+  res.status(200).send("OK");
+});
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
